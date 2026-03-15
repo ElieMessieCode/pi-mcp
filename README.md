@@ -150,9 +150,9 @@ server.start(3000);
 ## Roadmap
 
 ### High Priority
-- [ ] Auto-reconnect when server drops
-- [ ] Periodic health check for server connections
-- [ ] Tool cleanup when server disconnects
+- [x] Auto-reconnect when server drops
+- [x] Periodic health check for server connections
+- [x] Tool cleanup when server disconnects
 
 ### Medium Priority
 - [ ] MCP Resources support (`/mcp resources`)

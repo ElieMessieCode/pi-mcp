@@ -401,12 +401,101 @@ class MCPHTTPClient {
     return this.sessionId;
   }
 
+  // Health check - sends a simple request to verify connection
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Try to list tools as a health check
+      const response = await this.sendRequest("tools/list", {});
+      return !response.error;
+    } catch {
+      return false;
+    }
+  }
+
   async close(): Promise<void> {
     this.abortController?.abort();
     this.pendingRequests.forEach((pending) => {
       pending.reject(new Error("Client closed"));
     });
     this.pendingRequests.clear();
+  }
+}
+
+// ============================================================================
+// Health Check Manager
+// ============================================================================
+
+class HealthCheckManager {
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private servers: Map<string, MCPServerState>;
+  private registeredTools: Set<string>;
+  private toolToServer: Map<string, string>;
+  private registerMCPTool: (serverName: string, tool: MCPTool) => void;
+  private onServerDown: (name: string) => void;
+  private onServerRecovered: (name: string) => void;
+
+  constructor(
+    servers: Map<string, MCPServerState>,
+    registeredTools: Set<string>,
+    toolToServer: Map<string, string>,
+    registerMCPTool: (serverName: string, tool: MCPTool) => void,
+    onServerDown: (name: string) => void,
+    onServerRecovered: (name: string) => void
+  ) {
+    this.servers = servers;
+    this.registeredTools = registeredTools;
+    this.toolToServer = toolToServer;
+    this.registerMCPTool = registerMCPTool;
+    this.onServerDown = onServerDown;
+    this.onServerRecovered = onServerRecovered;
+  }
+
+  start(intervalMs: number = 30000): void {
+    if (this.intervalId) {
+      this.stop();
+    }
+
+    mcpLog(`Health check started (interval: ${intervalMs}ms)`);
+    
+    this.intervalId = setInterval(() => {
+      this.checkAllServers();
+    }, intervalMs);
+  }
+
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+      mcpLog("Health check stopped");
+    }
+  }
+
+  private async checkAllServers(): Promise<void> {
+    for (const [name, state] of this.servers) {
+      if (!state.connected) continue;
+
+      const client = (state as any).client as MCPHTTPClient;
+      if (!client) continue;
+
+      try {
+        const isHealthy = await client.healthCheck();
+        
+        if (!isHealthy) {
+          mcpLog(`Health check FAILED for ${name}`);
+          state.lastError = "Health check failed";
+          this.onServerDown(name);
+        } else if (state.lastError === "Health check failed") {
+          // Server recovered from previous failure
+          mcpLog(`Health check RECOVERED for ${name}`);
+          state.lastError = undefined;
+          this.onServerRecovered(name);
+        }
+      } catch (error) {
+        mcpLog(`Health check error for ${name}: ${error}`);
+        state.lastError = `Health check error: ${error}`;
+        this.onServerDown(name);
+      }
+    }
   }
 }
 
@@ -418,6 +507,15 @@ export default function piMCPExtension(pi: ExtensionAPI) {
   const servers = new Map<string, MCPServerState>();
   const toolToServer = new Map<string, string>(); // toolName -> serverName
   const registeredTools = new Set<string>();
+  
+  // Auto-reconnect settings
+  const MAX_RECONNECT_ATTEMPTS = 3;
+  const RECONNECT_DELAY_MS = 5000;
+  const reconnectAttempts = new Map<string, number>();
+  
+  // Health check interval (30 seconds)
+  const HEALTH_CHECK_INTERVAL_MS = 30000;
+  let healthCheckManager: HealthCheckManager | null = null;
 
   // Ensure config directory exists
   function ensureConfigDir(path: string): void {
@@ -784,13 +882,119 @@ export default function piMCPExtension(pi: ExtensionAPI) {
       if (failedCount > 0) {
         ctx.ui.notify(`MCP: ${failedCount} server(s) failed to connect`, "warning");
       }
+      
+      // Start health check after initial connections
+      startHealthCheck(ctx);
     } else {
       ctx.ui.setStatus("mcp", "ready");
     }
   });
 
+  // Handle server down event
+  function handleServerDown(name: string): void {
+    const state = servers.get(name);
+    if (!state) return;
+
+    const attempt = reconnectAttempts.get(name) || 0;
+    
+    if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+      mcpLog(`Max reconnect attempts reached for ${name}, marking as disconnected`);
+      // Clean up tools for this server
+      unregisterServerTools(name);
+      state.connected = false;
+      return;
+    }
+
+    mcpLog(`Attempting auto-reconnect for ${name} (attempt ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+    reconnectAttempts.set(name, attempt + 1);
+
+    // Try to reconnect after delay
+    setTimeout(async () => {
+      try {
+        const client = (state as any).client as MCPHTTPClient;
+        if (client) {
+          await client.close();
+        }
+        
+        // Try to reconnect
+        const newClient = new MCPHTTPClient(
+          state.config.url,
+          state.config.headers,
+          state.config.transport ?? "streamable"
+        );
+        
+        await newClient.initialize();
+        const tools = await newClient.listTools();
+        
+        // Reconnection successful
+        (state as any).client = newClient;
+        state.connected = true;
+        state.tools = tools;
+        state.lastError = undefined;
+        
+        // Re-register tools
+        for (const tool of tools) {
+          registerMCPTool(name, tool);
+        }
+        
+        reconnectAttempts.delete(name);
+        mcpLog(`Auto-reconnect successful for ${name}: ${tools.length} tools`);
+      } catch (error) {
+        mcpLog(`Auto-reconnect failed for ${name}: ${error}`);
+        // Will retry on next health check
+      }
+    }, RECONNECT_DELAY_MS);
+  }
+
+  // Handle server recovered event
+  function handleServerRecovered(name: string): void {
+    reconnectAttempts.delete(name);
+    mcpLog(`Server ${name} recovered`);
+  }
+
+  // Unregister all tools for a server
+  function unregisterServerTools(name: string): void {
+    const state = servers.get(name);
+    if (!state) return;
+
+    for (const tool of state.tools) {
+      const toolFullName = `mcp_${name}_${tool.name}`;
+      registeredTools.delete(toolFullName);
+      toolToServer.delete(toolFullName);
+    }
+    
+    state.tools = [];
+    mcpLog(`Unregistered all tools for server ${name}`);
+  }
+
+  // Start health check monitoring
+  function startHealthCheck(ctx: ExtensionContext): void {
+    if (healthCheckManager) {
+      healthCheckManager.stop();
+    }
+
+    healthCheckManager = new HealthCheckManager(
+      servers,
+      registeredTools,
+      toolToServer,
+      registerMCPTool,
+      handleServerDown,
+      handleServerRecovered
+    );
+
+    healthCheckManager.start(HEALTH_CHECK_INTERVAL_MS);
+    mcpLog(`Health check monitoring started (interval: ${HEALTH_CHECK_INTERVAL_MS}ms)`);
+  }
+
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
+    // Stop health check
+    if (healthCheckManager) {
+      healthCheckManager.stop();
+      healthCheckManager = null;
+    }
+    
+    // Close all connections
     for (const [name, state] of servers) {
       if (state.connected) {
         try {

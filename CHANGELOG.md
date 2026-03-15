@@ -35,7 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Global: `~/.pi/agent/mcp/servers.json`
   - Project: `.pi/mcp/servers.json`
 
+### Added (continued)
+- Auto-reconnect when server drops (up to 3 attempts with 5s delay)
+- Periodic health check for server connections (30s interval)
+- Automatic tool cleanup when server disconnects
+- Health check manager with configurable interval
+
 ### Known Issues
-- No auto-reconnect on connection loss
-- No periodic health check
-- Tools not unregistered when server disconnects
+- No TLS/SSL skip option yet
+- No configurable timeout per server
