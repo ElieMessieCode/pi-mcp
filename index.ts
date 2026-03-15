@@ -300,7 +300,7 @@ class MCPHTTPClient {
 
       this.doPost(request).catch((error) => {
         this.pendingRequests.delete(id);
-        clearTimeout(timeout);
+        clearTimeout(timeoutId);
         reject(error);
       });
     });
