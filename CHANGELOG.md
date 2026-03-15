@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-15
+
+### Added
+- Auto-reconnect when server drops (up to 3 attempts with 5s delay)
+- Periodic health check for server connections (30s interval)
+- Automatic tool cleanup when server disconnects
+- MCP Resources support (`/mcp resources`)
+- MCP Prompts support (`/mcp prompts`)
+- TLS/SSL skip option (`--insecure` flag)
+- Configurable timeout per server (`--timeout <ms>`)
+- Move server between scopes (`/mcp move <name> --global|--project`)
+- Export server configuration (`/mcp export [file]`)
+- Import server configuration (`/mcp import <file>`)
+- Health check manager with configurable interval
+
 ## [1.0.0] - 2026-03-15
 
 ### Added

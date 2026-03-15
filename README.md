@@ -211,4 +211,18 @@ MIT - see [LICENSE](LICENSE) for details
 
 ---
 
+## What's New in v1.2.0
+
+- Auto-reconnect when server drops (up to 3 attempts)
+- Periodic health check for server connections (30s interval)
+- Automatic tool cleanup when server disconnects
+- MCP Resources support
+- MCP Prompts support
+- TLS/SSL skip option (`--insecure`)
+- Configurable timeout per server (`--timeout <ms>`)
+- Move server between scopes (`/mcp move`)
+- Export/Import server configuration
+
+---
+
 **Repository:** [github.com/ElieMessieCode/pi-mcp](https://github.com/ElieMessieCode/pi-mcp)
