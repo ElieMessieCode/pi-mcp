@@ -73,6 +73,8 @@ const MCPServerConfig = Type.Object({
   ])),
   headers: Type.Optional(Type.Record(Type.String(), Type.String())),
   enabled: Type.Boolean({ description: "Whether server is enabled" }),
+  insecure: Type.Optional(Type.Boolean({ description: "Skip TLS/SSL verification" })),
+  timeout: Type.Optional(Type.Number({ description: "Request timeout in milliseconds" })),
 });
 
 type MCPServerConfig = Static<typeof MCPServerConfig>;
@@ -161,12 +163,16 @@ class MCPHTTPClient {
     reject: (error: Error) => void;
   }> = new Map();
   private onNotification?: (notification: JSONRPCNotification) => void;
-  private sessionId: string | null = null; // MCP Session ID from server
+  private sessionId: string | null = null;
+  private insecure: boolean;
+  private timeout: number;
 
   constructor(
     url: string,
     headers: Record<string, string> = {},
-    transport: "http" | "sse" | "streamable" = "streamable"
+    transport: "http" | "sse" | "streamable" = "streamable",
+    insecure: boolean = false,
+    timeout: number = 30000
   ) {
     this.url = url.replace(/\/$/, "");
     this.headers = {
@@ -175,6 +181,12 @@ class MCPHTTPClient {
       ...headers,
     };
     this.transport = transport;
+    this.insecure = insecure;
+    this.timeout = timeout;
+    
+    if (insecure) {
+      mcpLog(`WARNING: TLS/SSL verification disabled for ${url}`);
+    }
   }
 
   // Get current headers including session ID
@@ -272,18 +284,18 @@ class MCPHTTPClient {
     };
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`Request timeout: ${method}`));
-      }, 30000);
+        reject(new Error(`Request timeout (${this.timeout}ms): ${method}`));
+      }, this.timeout);
 
       this.pendingRequests.set(id, {
         resolve: (value) => {
-          clearTimeout(timeout);
+          clearTimeout(timeoutId);
           resolve(value);
         },
         reject: (error) => {
-          clearTimeout(timeout);
+          clearTimeout(timeoutId);
           reject(error);
         },
       });
@@ -740,7 +752,9 @@ export default function piMCPExtension(pi: ExtensionAPI) {
       const client = new MCPHTTPClient(
         serverState.config.url,
         serverState.config.headers,
-        serverState.config.transport ?? "streamable"
+        serverState.config.transport ?? "streamable",
+        serverState.config.insecure ?? false,
+        serverState.config.timeout ?? 30000
       );
 
       // Initialize MCP session
@@ -1012,7 +1026,7 @@ export default function piMCPExtension(pi: ExtensionAPI) {
     description: "Manage MCP server connections",
     
     getArgumentCompletions: (prefix) => {
-      const subcommands = ["add", "remove", "list", "connect", "disconnect", "tools", "status", "refresh", "scopes", "logs"];
+      const subcommands = ["add", "remove", "list", "connect", "disconnect", "tools", "resources", "prompts", "status", "refresh", "scopes", "logs", "move", "export", "import"];
       const filtered = subcommands.filter((cmd) => cmd.startsWith(prefix));
       return filtered.map((cmd) => ({ value: cmd, label: cmd }));
     },
@@ -1027,9 +1041,12 @@ export default function piMCPExtension(pi: ExtensionAPI) {
         case "add": {
           if (!arg1 || !arg2) {
             ctx.ui.notify(
-              "Usage: /mcp add <name> <url> [--global|--project]\n" +
-              "  --global   Save to global config (default)\n" +
-              "  --project  Save to project config (.pi/mcp/)",
+              "Usage: /mcp add <name> <url> [options]\n" +
+              "Options:\n" +
+              "  --global            Save to global config (default)\n" +
+              "  --project           Save to project config (.pi/mcp/)\n" +
+              "  --insecure          Skip TLS/SSL verification\n" +
+              "  --timeout <ms>      Request timeout in milliseconds (default: 30000)",
               "warning"
             );
             return;
@@ -1045,6 +1062,11 @@ export default function piMCPExtension(pi: ExtensionAPI) {
 
           // Parse flags
           const isProject = argsRest.includes("--project");
+          const isInsecure = argsRest.includes("--insecure");
+          
+          // Parse timeout
+          const timeoutMatch = argsRest.match(/--timeout\s+(\d+)/);
+          const timeout = timeoutMatch ? parseInt(timeoutMatch[1], 10) : 30000;
           
           // Extract URL (first part before any -- flags)
           const urlMatch = argsRest.match(/^(\S+)/);
@@ -1073,8 +1095,9 @@ export default function piMCPExtension(pi: ExtensionAPI) {
             transport: "streamable",
             headers: Object.keys(headers).length > 0 ? headers : undefined,
             enabled: false,
+            insecure: isInsecure || undefined,
+            timeout: timeout !== 30000 ? timeout : undefined,
           };
-          // Store scope
           (config as any).scope = isProject ? "project" : "global";
 
           servers.set(name, {
@@ -1085,7 +1108,11 @@ export default function piMCPExtension(pi: ExtensionAPI) {
 
           saveConfig();
           const scopeInfo = isProject ? "(project)" : "(global)";
-          ctx.ui.notify(`Added MCP server "${name}" ${scopeInfo} at ${url}. Use /mcp connect ${name} to connect.`, "success");
+          const flags = [];
+          if (isInsecure) flags.push("insecure");
+          if (timeout !== 30000) flags.push(`timeout: ${timeout}ms`);
+          const flagsInfo = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
+          ctx.ui.notify(`Added MCP server "${name}" ${scopeInfo}${flagsInfo} at ${url}. Use /mcp connect ${name} to connect.`, "success");
           break;
         }
 
@@ -1250,6 +1277,173 @@ export default function piMCPExtension(pi: ExtensionAPI) {
           break;
         }
 
+        case "resources": {
+          const targetServer = arg1;
+          let resourceList: Array<{ server: string; resource: MCPResource }> = [];
+
+          for (const [name, state] of servers) {
+            if (!state.connected) continue;
+            if (targetServer && name !== targetServer) continue;
+
+            const client = (state as any).client as MCPHTTPClient;
+            if (client) {
+              try {
+                const resources = await client.listResources();
+                for (const resource of resources) {
+                  resourceList.push({ server: name, resource });
+                }
+              } catch {
+                // Skip if not supported
+              }
+            }
+          }
+
+          if (resourceList.length === 0) {
+            ctx.ui.notify("No resources available. Server may not support resources.", "info");
+            return;
+          }
+
+          const resourceItems = resourceList.map(({ server, resource }) => {
+            const desc = resource.description ? ` - ${resource.description}` : "";
+            return `[${server}] ${resource.name}${desc} (${resource.uri})`;
+          });
+
+          await ctx.ui.select("MCP Resources", resourceItems);
+          break;
+        }
+
+        case "prompts": {
+          const promptServer = arg1;
+          let promptList: Array<{ server: string; prompt: MCPPrompt }> = [];
+
+          for (const [name, state] of servers) {
+            if (!state.connected) continue;
+            if (promptServer && name !== promptServer) continue;
+
+            const client = (state as any).client as MCPHTTPClient;
+            if (client) {
+              try {
+                const prompts = await client.listPrompts();
+                for (const prompt of prompts) {
+                  promptList.push({ server: name, prompt });
+                }
+              } catch {
+                // Skip if not supported
+              }
+            }
+          }
+
+          if (promptList.length === 0) {
+            ctx.ui.notify("No prompts available. Server may not support prompts.", "info");
+            return;
+          }
+
+          const promptItems = promptList.map(({ server, prompt }) => {
+            const desc = prompt.description ? ` - ${prompt.description}` : "";
+            const args = prompt.arguments ? ` (args: ${prompt.arguments.map(a => a.name).join(", ")})` : "";
+            return `[${server}] ${prompt.name}${desc}${args}`;
+          });
+
+          await ctx.ui.select("MCP Prompts", promptItems);
+          break;
+        }
+
+        case "move": {
+          if (!arg1 || !arg2) {
+            ctx.ui.notify("Usage: /mcp move <name> --global|--project", "warning");
+            return;
+          }
+
+          const serverToMove = servers.get(arg1);
+          if (!serverToMove) {
+            ctx.ui.notify(`Server "${arg1}" not found`, "warning");
+            return;
+          }
+
+          const newScope = arg2.includes("--project") ? "project" : "global";
+          const currentScope = (serverToMove.config as any)?.scope ?? "global";
+
+          if (currentScope === newScope) {
+            ctx.ui.notify(`Server "${arg1}" is already in ${newScope} scope`, "info");
+            return;
+          }
+
+          (serverToMove.config as any).scope = newScope;
+          saveConfig();
+          ctx.ui.notify(`Moved "${arg1}" from ${currentScope} to ${newScope} scope`, "success");
+          break;
+        }
+
+        case "export": {
+          const exportPath = arg1 || "mcp-servers-export.json";
+          try {
+            const exportData = {
+              version: "1.0.0",
+              exportedAt: new Date().toISOString(),
+              servers: Array.from(servers.values()).map((s) => ({
+                name: s.config.name,
+                url: s.config.url,
+                transport: s.config.transport,
+                headers: s.config.headers,
+                scope: (s.config as any)?.scope ?? "global",
+              })),
+            };
+            writeFileSync(exportPath, JSON.stringify(exportData, null, 2), "utf-8");
+            ctx.ui.notify(`Exported ${servers.size} server(s) to ${exportPath}`, "success");
+          } catch (error) {
+            ctx.ui.notify(`Export failed: ${error}`, "error");
+          }
+          break;
+        }
+
+        case "import": {
+          if (!arg1) {
+            ctx.ui.notify("Usage: /mcp import <file-path>", "warning");
+            return;
+          }
+
+          try {
+            if (!existsSync(arg1)) {
+              ctx.ui.notify(`File not found: ${arg1}`, "error");
+              return;
+            }
+
+            const importData = JSON.parse(readFileSync(arg1, "utf-8"));
+            const importedServers = importData.servers ?? [];
+            let imported = 0;
+            let skipped = 0;
+
+            for (const server of importedServers) {
+              if (servers.has(server.name)) {
+                skipped++;
+                continue;
+              }
+
+              const config: MCPServerConfig = {
+                name: server.name,
+                url: server.url,
+                transport: server.transport ?? "streamable",
+                headers: server.headers,
+                enabled: false,
+              };
+              (config as any).scope = server.scope ?? "global";
+
+              servers.set(server.name, {
+                config,
+                connected: false,
+                tools: [],
+              });
+              imported++;
+            }
+
+            saveConfig();
+            ctx.ui.notify(`Imported ${imported} server(s), skipped ${skipped} duplicate(s)`, "success");
+          } catch (error) {
+            ctx.ui.notify(`Import failed: ${error}`, "error");
+          }
+          break;
+        }
+
         case "status": {
           const connectedServers = Array.from(servers.values()).filter((s) => s.connected);
           const totalTools = connectedServers.reduce((sum, s) => sum + s.tools.length, 0);
@@ -1334,20 +1528,26 @@ export default function piMCPExtension(pi: ExtensionAPI) {
           ctx.ui.notify(
             "MCP Commands:\n\n" +
             "Server Management:\n" +
-            "  /mcp add <name> <url> [--global|--project]  Add server\n" +
+            "  /mcp add <name> <url> [options]              Add server\n" +
+            "      Options: --global|--project --insecure --timeout <ms>\n" +
             "  /mcp remove <name>                           Remove server\n" +
             "  /mcp list                                    List servers (grouped by scope)\n" +
             "  /mcp status                                  Show connection status\n" +
-            "  /mcp scopes                                  Show config file paths\n\n" +
+            "  /mcp scopes                                  Show config file paths\n" +
+            "  /mcp move <name> --global|--project          Move server between scopes\n\n" +
             "Connection:\n" +
             "  /mcp connect                                 Connect to ALL servers\n" +
             "  /mcp connect <name>                          Connect to specific server\n" +
             "  /mcp disconnect                              Disconnect from ALL servers\n" +
             "  /mcp disconnect <name>                       Disconnect from specific server\n\n" +
-            "Tools:\n" +
-            "  /mcp tools                                   List all available tools\n" +
-            "  /mcp tools <server>                          List tools from server\n" +
+            "Discovery:\n" +
+            "  /mcp tools [server]                          List available tools\n" +
+            "  /mcp resources [server]                      List available resources\n" +
+            "  /mcp prompts [server]                        List available prompts\n" +
             "  /mcp refresh [name]                          Refresh tool list\n\n" +
+            "Export/Import:\n" +
+            "  /mcp export [file]                           Export servers to JSON\n" +
+            "  /mcp import <file>                           Import servers from JSON\n\n" +
             "Quick Commands:\n" +
             "  /mcp-status                                  Quick status overview\n" +
             "  /mcp-logs                                    View debug logs\n" +

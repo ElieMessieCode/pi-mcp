@@ -41,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic tool cleanup when server disconnects
 - Health check manager with configurable interval
 
+### Added (continued)
+- MCP Resources support (`/mcp resources`)
+- MCP Prompts support (`/mcp prompts`)
+- TLS/SSL skip option (`--insecure` flag)
+- Configurable timeout per server (`--timeout <ms>`)
+- Move server between scopes (`/mcp move <name> --global|--project`)
+- Export server configuration (`/mcp export [file]`)
+- Import server configuration (`/mcp import <file>`)
+
 ### Known Issues
-- No TLS/SSL skip option yet
-- No configurable timeout per server
+- Server groups not yet implemented
+- Tool filters not yet implemented

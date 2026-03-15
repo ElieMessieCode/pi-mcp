@@ -48,15 +48,20 @@ Copy the `pi-mcp` folder to:
 
 | Command | Description |
 |---------|-------------|
-| `/mcp add <name> <url> [--global\|--project]` | Add an MCP server |
+| `/mcp add <name> <url> [options]` | Add server (options: `--global`, `--project`, `--insecure`, `--timeout`) |
 | `/mcp remove <name>` | Remove a server |
 | `/mcp list` | List configured servers (grouped by scope) |
 | `/mcp connect [name]` | Connect to server(s) - all if no name |
 | `/mcp disconnect [name]` | Disconnect from server(s) - all if no name |
 | `/mcp tools [name]` | List available tools |
+| `/mcp resources [name]` | List available resources |
+| `/mcp prompts [name]` | List available prompts |
 | `/mcp status` | Show connection status |
 | `/mcp refresh [name]` | Refresh tool list |
 | `/mcp scopes` | Show config file paths |
+| `/mcp move <name> --global\|--project` | Move server between scopes |
+| `/mcp export [file]` | Export servers to JSON |
+| `/mcp import <file>` | Import servers from JSON |
 | `/mcp-status` | Quick status overview |
 | `/mcp-logs` | View debug logs |
 | `/mcp-logs clear` | Clear debug logs |
@@ -171,12 +176,12 @@ server.start(3000);
 - [x] Tool cleanup when server disconnects
 
 ### Medium Priority
-- [ ] MCP Resources support (`/mcp resources`)
-- [ ] MCP Prompts support (`/mcp prompts`)
-- [ ] TLS/SSL skip option (`--insecure`)
-- [ ] Configurable timeout per server
-- [ ] Move server between scopes (`/mcp move <name> --global|--project`)
-- [ ] Export/Import server configuration
+- [x] MCP Resources support (`/mcp resources`)
+- [x] MCP Prompts support (`/mcp prompts`)
+- [x] TLS/SSL skip option (`--insecure`)
+- [x] Configurable timeout per server (`--timeout <ms>`)
+- [x] Move server between scopes (`/mcp move <name> --global|--project`)
+- [x] Export/Import server configuration
 
 ### Low Priority
 - [ ] Server groups (`/mcp group add <name> <server1> <server2>`)
