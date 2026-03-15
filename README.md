@@ -1,95 +1,114 @@
 # pi-mcp
 
-> Extension Pi pour connecter des serveurs MCP (Model Context Protocol) via HTTP
+> Pi extension for connecting MCP (Model Context Protocol) HTTP servers
 
 [![npm version](https://badge.fury.io/js/pi-mcp.svg)](https://www.npmjs.com/package/pi-mcp)
 [![Downloads](https://img.shields.io/npm/dm/pi-mcp.svg)](https://www.npmjs.com/package/pi-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Fonctionnalités
+## Features
 
-- 🌐 Connexion aux serveurs MCP via HTTP/SSE ou Streamable HTTP
-- 🔧 Découverte automatique des outils disponibles sur les serveurs
-- 🛠️ Enregistrement des outils MCP comme outils natifs Pi
-- 📊 Gestion des connexions via commandes slash
-- 💾 Configuration persistante entre les sessions
+- Connect to MCP servers via HTTP/SSE or Streamable HTTP
+- Auto-discover tools available on servers
+- Register MCP tools as native Pi tools
+- Manage connections via slash commands
+- Persistent configuration across sessions
+- Global and per-project server configurations
 
 ## Installation
 
-Copiez le dossier `pi-mcp` dans :
-- `~/.pi/agent/extensions/pi-mcp/` (global - tous les projets)
-- `.pi/extensions/pi-mcp/` (local au projet)
+Copy the `pi-mcp` folder to:
+- `~/.pi/agent/extensions/pi-mcp/` (global - all projects)
+- `.pi/extensions/pi-mcp/` (project-local)
 
-Ou installez via :
+Or install via:
 ```bash
-pi -e ./pi-mcp
+pi install git:github.com/ElieMessieCode/pi-mcp
 ```
 
 ## Usage
 
-### Commandes disponibles
+### Commands
 
-| Commande | Description |
-|----------|-------------|
-| `/mcp add <name> <url>` | Ajouter un serveur MCP |
-| `/mcp remove <name>` | Supprimer un serveur |
-| `/mcp list` | Lister les serveurs configurés |
-| `/mcp connect <name>` | Se connecter à un serveur |
-| `/mcp disconnect <name>` | Se déconnecter d'un serveur |
-| `/mcp tools [name]` | Lister les outils disponibles |
-| `/mcp status` | Afficher l'état des connexions |
-| `/mcp refresh [name]` | Rafraîchir la liste des outils |
-| `/mcp-status` | Vue d'ensemble rapide |
+| Command | Description |
+|---------|-------------|
+| `/mcp add <name> <url> [--global\|--project]` | Add an MCP server |
+| `/mcp remove <name>` | Remove a server |
+| `/mcp list` | List configured servers (grouped by scope) |
+| `/mcp connect [name]` | Connect to server(s) - all if no name |
+| `/mcp disconnect [name]` | Disconnect from server(s) - all if no name |
+| `/mcp tools [name]` | List available tools |
+| `/mcp status` | Show connection status |
+| `/mcp refresh [name]` | Refresh tool list |
+| `/mcp scopes` | Show config file paths |
+| `/mcp-status` | Quick status overview |
+| `/mcp-logs` | View debug logs |
+| `/mcp-logs clear` | Clear debug logs |
 
-### Exemples
+### Examples
 
-Ajouter un serveur MCP :
+Add an MCP server (global):
 ```
 /mcp add my-server https://my-mcp-server.com/mcp
 ```
 
-Ajouter un serveur avec authentification :
+Add a server for current project only:
+```
+/mcp add unity http://localhost:53559 --project
+```
+
+Add server with authentication:
 ```
 /mcp add github https://api.github.com/mcp Authorization=Bearer ghp_xxx
 ```
 
-Connecter tous les serveurs configurés (au démarrage de session):
+Connect to all servers:
 ```
-/mcp connect my-server
-```
-
-Utiliser un outil MCP (automatiquement enregistré) :
-```
-L'outil apparaîtra automatiquement dans la liste des outils disponibles
-avec le préfixe mcp_<server-name>_<tool-name>
+/mcp connect
 ```
 
-## Protocole supporté
+Use an MCP tool (auto-registered):
+```
+Tools are automatically registered with the prefix: mcp_<server-name>_<tool-name>
+```
 
-- **Streamable HTTP** (recommandé) : JSON-RPC avec support SSE
-- **SSE** : Server-Sent Events pour les notifications
-- **HTTP simple** : Requêtes-réponses JSON-RPC
+## Supported Protocols
 
-## Types de données supportés
+- **Streamable HTTP** (recommended): JSON-RPC with SSE support
+- **SSE**: Server-Sent Events for notifications
+- **Simple HTTP**: Request-response JSON-RPC
 
-Les outils MCP sont automatiquement convertis en outils Pi avec :
-- Schéma de paramètres JSON → TypeBox
-- Support des types : `string`, `number`, `integer`, `boolean`, `array`, `object`
-- Description et documentation automatiques
+## Supported Data Types
 
-## Architecture
+MCP tools are automatically converted to Pi tools with:
+- JSON Schema to TypeBox parameter conversion
+- Supported types: `string`, `number`, `integer`, `boolean`, `array`, `object`
+- Automatic description and documentation
+
+## Configuration Scopes
+
+| Scope | Path | Usage |
+|-------|------|-------|
+| Global | `~/.pi/agent/mcp/servers.json` | Shared across all projects |
+| Project | `.pi/mcp/servers.json` | Specific to current project |
+
+Servers auto-connect on Pi startup.
+
+## Project Structure
 
 ```
 pi-mcp/
-├── index.ts          # Extension principale
-├── README.md         # Cette documentation
-└── package.json      # Métadonnées du package
+├── index.ts           # Main extension
+├── package.json       # Package metadata
+├── README.md          # This documentation
+├── LICENSE            # MIT license
+├── CHANGELOG.md       # Version history
+└── CONTRIBUTING.md    # Contribution guidelines
 ```
 
-## Exemple de serveur MCP compatible
+## Compatible MCP Server Example
 
 ```typescript
-// Serveur MCP simple avec un outil
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const server = new McpServer({
@@ -100,73 +119,74 @@ const server = new McpServer({
 server.tool("get_weather", 
   { city: { type: "string", description: "City name" } },
   async ({ city }) => ({
-    content: [{ type: "text", text: `Weather in ${city}: Sunny, 22°C` }]
+    content: [{ type: "text", text: `Weather in ${city}: Sunny, 22C` }]
   })
 );
 
-// Démarrer le serveur HTTP
 server.start(3000);
 ```
 
-## Dépannage
+## Troubleshooting
 
-**Connexion échouée :**
-- Vérifiez que l'URL est accessible
-- Vérifiez les headers d'authentification
-- Utilisez `/mcp status` pour voir les erreurs
+**Connection failed:**
+- Verify the URL is accessible
+- Check authentication headers
+- Use `/mcp status` to see errors
 
-**Outils non détectés :**
-- Utilisez `/mcp refresh <name>` pour rafraîchir
-- Vérifiez que le serveur implémente `tools/list`
+**Tools not detected:**
+- Use `/mcp refresh <name>` to refresh
+- Verify the server implements `tools/list`
+- Check Docker logs if using Docker: `docker logs <container-name>`
 
-**Timeout des requêtes :**
-- Timeout par défaut : 30 secondes
-- Vérifiez la latence du réseau
+**Request timeout:**
+- Default timeout: 30 seconds
+- Check network latency
 
----
+**Pi shows 0 tools:**
+- Ensure Unity Editor is running (for Unity MCP)
+- Check the MCP plugin is connected in Unity
+- View logs: `/mcp-logs`
 
-## 📋 TODO - Roadmap
+## Roadmap
 
-### 🔴 Haute Priorité
-- [ ] **Auto-reconnect** - Reconnexion automatique si serveur tombe
-- [ ] **Health check** - Vérification périodique de la connexion des serveurs
-- [ ] **Tool cleanup** - Désinscription des outils si serveur déconnecté
+### High Priority
+- [ ] Auto-reconnect when server drops
+- [ ] Periodic health check for server connections
+- [ ] Tool cleanup when server disconnects
 
-### 🟡 Moyenne Priorité
-- [ ] **Resources MCP** - Afficher et utiliser les ressources MCP (`/mcp resources`)
-- [ ] **Prompts MCP** - Afficher et utiliser les prompts MCP (`/mcp prompts`)
-- [ ] **TLS/SSL skip** - Option pour ignorer les certificats auto-signés (`--insecure`)
-- [ ] **Server timeout config** - Timeout configurable par serveur
-- [ ] **Move server** - Commande `/mcp move <name> --global|--project` pour changer de scope
-- [ ] **Export/Import** - Exporter/importer la configuration serveurs
+### Medium Priority
+- [ ] MCP Resources support (`/mcp resources`)
+- [ ] MCP Prompts support (`/mcp prompts`)
+- [ ] TLS/SSL skip option (`--insecure`)
+- [ ] Configurable timeout per server
+- [ ] Move server between scopes (`/mcp move <name> --global|--project`)
+- [ ] Export/Import server configuration
 
-### 🟢 Basse Priorité
-- [ ] **Server groups** - Grouper des serveurs (`/mcp group add <name> <server1> <server2>`)
-- [ ] **Tool filters** - Filtrer les outils par pattern (`/mcp add x --filter="assets-*"`)
-- [ ] **Connection history** - Historique des connexions et erreurs
-- [ ] **Metrics** - Statistiques d'utilisation des outils MCP
-- [ ] **Custom tool templates** - Templates pour créer des outils MCP personnalisés
+### Low Priority
+- [ ] Server groups (`/mcp group add <name> <server1> <server2>`)
+- [ ] Tool filters (`/mcp add x --filter="assets-*"`)
+- [ ] Connection history
+- [ ] Usage metrics
+- [ ] Custom tool templates
 
-### 🐛 Bugs connus
-- [ ] Gérer les caractères spéciaux dans les URLs
-- [ ] Timeout plus explicite en cas d'erreur de connexion
-- [ ] Supporter les serveurs MCP avec authentification Basic
+### Known Bugs
+- [ ] Handle special characters in URLs
+- [ ] More explicit timeout error messages
+- [ ] Support Basic authentication
 
----
+## Contributing
 
-## 🤝 Contribuer
+Contributions are welcome!
 
-Les contributions sont les bienvenues ! 
-
-1. Fork le repo
-2. Crée une branche (`git checkout -b feature/amazing-feature`)
-3. Commit tes changements (`git commit -m 'Add amazing feature'`)
+1. Fork the repo
+2. Create a branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
 4. Push (`git push origin feature/amazing-feature`)
-5. Ouvre un Pull Request
+5. Open a Pull Request
 
-## 📄 License
+## License
 
-MIT - voir [LICENSE](LICENSE) pour les détails
+MIT - see [LICENSE](LICENSE) for details
 
 ---
 
