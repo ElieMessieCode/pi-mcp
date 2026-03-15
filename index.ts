@@ -48,10 +48,8 @@ function mcpLog(...args: unknown[]): void {
   const message = args.map(a => typeof a === "object" ? JSON.stringify(a, null, 2) : String(a)).join(" ");
   const logLine = `[${timestamp}] ${message}\n`;
   
-  // Also write to console (may be hidden by TUI)
-  console.log(`[MCP] ${message}`);
   
-  // Write to file for easy viewing
+  // Write to file only (view with /mcp-logs command)
   try {
     appendFileSync(LOG_FILE, logLine, "utf-8");
   } catch {
@@ -544,7 +542,7 @@ export default function piMCPExtension(pi: ExtensionAPI) {
         return JSON.parse(data) as MCPServerConfig[];
       }
     } catch (error) {
-      console.error(`Failed to load MCP config from ${filePath}:`, error);
+      mcpLog(`Failed to load MCP config from ${filePath}:`, error);
     }
     return [];
   }
@@ -556,7 +554,7 @@ export default function piMCPExtension(pi: ExtensionAPI) {
       ensureConfigDir(dir);
       writeFileSync(filePath, JSON.stringify(config, null, 2), "utf-8");
     } catch (error) {
-      console.error(`Failed to save MCP config to ${filePath}:`, error);
+      mcpLog(`Failed to save MCP config to ${filePath}:`, error);
     }
   }
 
