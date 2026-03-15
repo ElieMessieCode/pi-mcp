@@ -2,8 +2,8 @@
 
 > Pi extension for connecting MCP (Model Context Protocol) HTTP servers
 
-[![npm version](https://badge.fury.io/js/pi-mcp.svg)](https://www.npmjs.com/package/pi-mcp)
-[![Downloads](https://img.shields.io/npm/dm/pi-mcp.svg)](https://www.npmjs.com/package/pi-mcp)
+[![npm version](https://badge.fury.io/js/%40eliemessiecode%2Fpi-mcp.svg)](https://www.npmjs.com/package/@eliemessiecode/pi-mcp)
+[![Downloads](https://img.shields.io/npm/dm/@eliemessiecode/pi-mcp.svg)](https://www.npmjs.com/package/@eliemessiecode/pi-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -17,14 +17,30 @@
 
 ## Installation
 
-Copy the `pi-mcp` folder to:
-- `~/.pi/agent/extensions/pi-mcp/` (global - all projects)
-- `.pi/extensions/pi-mcp/` (project-local)
+### Via npm (recommended)
+```bash
+npm install -g @eliemessiecode/pi-mcp
+```
 
-Or install via:
+### Via bun
+```bash
+bun install -g @eliemessiecode/pi-mcp
+```
+
+### Via Pi
+```bash
+pi install npm:@eliemessiecode/pi-mcp
+```
+
+### Via Git
 ```bash
 pi install git:github.com/ElieMessieCode/pi-mcp
 ```
+
+### Manual
+Copy the `pi-mcp` folder to:
+- `~/.pi/agent/extensions/pi-mcp/` (global - all projects)
+- `.pi/extensions/pi-mcp/` (project-local)
 
 ## Usage
 
