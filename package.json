@@ -1,6 +1,6 @@
 {
   "name": "@eliemessiecode/pi-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Connect MCP (Model Context Protocol) HTTP servers to Pi agent. Auto-discover and use MCP tools.",
   "keywords": [
     "pi-package",
